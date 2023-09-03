@@ -39,7 +39,7 @@ next_sprint = df[df['startDate'] > today].sort_values('startDate').iloc[0]['path
 next_sprint = df[df['startDate'] > today].sort_values('startDate').iloc[1]['path']
 
 next_sprint_start = df[df['startDate'] > today].sort_values('startDate').iloc[0]['startDate']
-next_sprint_end = df[df['startDate'] > today].sort_values('startDate').iloc[1]['finishDate']
+next_sprint_end = df[df['startDate'] > today].sort_values('startDate').iloc[0]['finishDate']
 
 # Print the results
 print(current_sprint)
