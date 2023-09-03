@@ -45,6 +45,26 @@ next_sprint_end = df[df['startDate'] > today].sort_values('startDate').iloc[1]['
 print(current_sprint)
 print(next_sprint, next_sprint_start, next_sprint_end)
 
+# %% get work items in the current sprint
+def work_item_exists(title, area_path, iteration_path, assigned_to):
+    authorization = str(base64.b64encode(bytes(':'+pat, 'ascii')), 'ascii')
+    headers1 = {
+        'Accept': 'application/json',
+        'Authorization': 'Basic '+ authorization
+    }
+    query_url = f'https://dev.azure.com/{organization}/{project}/_apis/wit/wiql?api-version=7.0'
+    query = {
+        "query": f"SELECT [System.Id] FROM WorkItems WHERE [System.Title] = '{title}' "
+                 f"AND [System.AreaPath] = '{area_path}' "
+                 f"AND [System.IterationPath] = '{iteration_path}' "
+                 f"AND [System.AssignedTo] = '{assigned_to}'"
+    }
+    response = requests.post(query_url, headers=headers1, json=query)
+    if response.status_code == 200:
+        data = response.json()
+        if data.get('workItems'):
+            return True
+    return False
 # %% read in the excel sheet
 df = pd.read_excel(r"DevopsRecurringItems.xlsx")
 df.fillna('', inplace=True)
@@ -73,64 +93,69 @@ url = f'https://dev.azure.com/{organization}/{project}/_apis/wit/workitems/$Prod
 
 
 for index, row in df.iterrows():
-    payload = [
-        {
-            'op': 'add',
-            'path': '/fields/System.Title',
-            'value': row['title']
-        },
-        {
-            'op': 'add',
-            'path': '/fields/System.AssignedTo',
-            'value': row['assignedto']
-        },
-        {
-            'op': 'add',
-            'path': '/fields/System.AreaPath',
-            'value': row['areapath']
-        },
-        {
-            'op': 'add',
-            'path': '/fields/System.IterationPath',
-            'value': next_sprint
-        },
-        {
-            'op': 'add',
-            'path': '/fields/Custom.Client2',
-            'value': row['Client']
-        },
-        {
-            'op': 'add',
-            'path': '/fields/Microsoft.VSTS.Scheduling.Effort',
-            'value': row['Estimated Effort']
-        }    
-    ]
+        title = row['title']
+        area_path = row['areapath']
+        assigned_to = row['assignedto']
+        # Check if the work item already exists
+        if not work_item_exists(title, area_path, next_sprint, assigned_to):
+            payload = [
+                {
+                    'op': 'add',
+                    'path': '/fields/System.Title',
+                    'value': row['title']
+                },
+                {
+                    'op': 'add',
+                    'path': '/fields/System.AssignedTo',
+                    'value': row['assignedto']
+                },
+                {
+                    'op': 'add',
+                    'path': '/fields/System.AreaPath',
+                    'value': row['areapath']
+                },
+                {
+                    'op': 'add',
+                    'path': '/fields/System.IterationPath',
+                    'value': next_sprint
+                },
+                {
+                    'op': 'add',
+                    'path': '/fields/Custom.Client2',
+                    'value': row['Client']
+                },
+                {
+                    'op': 'add',
+                    'path': '/fields/Microsoft.VSTS.Scheduling.Effort',
+                    'value': row['Estimated Effort']
+                }    
+            ]
 
-    # should add every month on the specified day
-    if row['duemonth']=='All':
-        if (next_sprint_start.day<=row['dueday']<=next_sprint_end.day) or \
-            (next_sprint_end.day < next_sprint_start.day and (row['dueday'] >= next_sprint_start.day or row['dueday'] <= next_sprint_end.day)):
-            print(payload)
-            response = requests.patch(url, json=payload, headers=headers)
+            # should add every month on the specified day
+            if row['duemonth']=='All':
+                if (next_sprint_start.day<=row['dueday']<=next_sprint_end.day) or \
+                    (next_sprint_end.day < next_sprint_start.day and (row['dueday'] >= next_sprint_start.day or row['dueday'] <= next_sprint_end.day)):
+                    print(payload)
+                    response = requests.patch(url, json=payload, headers=headers)
 
-    # should add every week so just add it twice in every sprint
-    elif row['duemonth']=='Weekly':
-        print(payload)
-        print(payload)
-        response = requests.patch(url, json=payload, headers=headers)
-        response = requests.patch(url, json=payload, headers=headers)
-
-    # should add every sprint
-    elif row['duemonth']=='Sprint':
-        print(payload)
-        response = requests.patch(url, json=payload, headers=headers)
-
-    # only add on specific months
-    else:
-        months = row['duemonth'].split(',')
-        months_as_numbers = [month_mapping[month] for month in months]
-        if (next_sprint_start.month in months_as_numbers) or (next_sprint_end.month in months_as_numbers):
-            if next_sprint_start.day<=row['dueday']<=next_sprint_end.day or \
-            (next_sprint_end.day < next_sprint_start.day and (row['dueday'] >= next_sprint_start.day or row['dueday'] <= next_sprint_end.day)):
+            # should add every week so just add it twice in every sprint
+            elif row['duemonth']=='Weekly':
+                print(payload)
                 print(payload)
                 response = requests.patch(url, json=payload, headers=headers)
+                response = requests.patch(url, json=payload, headers=headers)
+
+            # should add every sprint
+            elif row['duemonth']=='Sprint':
+                print(payload)
+                response = requests.patch(url, json=payload, headers=headers)
+
+            # only add on specific months
+            else:
+                months = row['duemonth'].split(',')
+                months_as_numbers = [month_mapping[month] for month in months]
+                if (next_sprint_start.month in months_as_numbers) or (next_sprint_end.month in months_as_numbers):
+                    if next_sprint_start.day<=row['dueday']<=next_sprint_end.day or \
+                    (next_sprint_end.day < next_sprint_start.day and (row['dueday'] >= next_sprint_start.day or row['dueday'] <= next_sprint_end.day)):
+                        print(payload)
+                        response = requests.patch(url, json=payload, headers=headers)
